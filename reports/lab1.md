@@ -1,0 +1,3 @@
+# 思路
+既然要维护一个taskinfo，那么相关的调用只用在全局唯一管理器taskmanager中维护，因此我们在TCB中维护一个syscalltimes与
+start_time，并且在syscall的时候调用syscalltimes的接口即可，而starttime可以在run_next_task的时候调用，这样即可获取时间

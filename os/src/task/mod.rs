@@ -14,9 +14,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_us;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +55,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            start_time:0,
+            syscall_times:[0;MAX_SYSCALL_NUM],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -70,7 +73,7 @@ lazy_static! {
         }
     };
 }
-
+#[allow(missing_docs)]
 impl TaskManager {
     /// Run the first task in task list.
     ///
@@ -122,6 +125,11 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
+            
+            if inner.tasks[next].start_time==0{
+                inner.tasks[next].start_time=get_time_us();
+            }
+
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -135,7 +143,52 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    #[allow(missing_docs)]
+    //添加syscall次数
+    pub fn add_syscall_time(&self,syscall_id:usize){
+        let mut inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        inner.tasks[current].syscall_times[syscall_id]+=1;
+    }
+    #[allow(missing_docs)]
+    //给TaskManager全局管理器调用，返回当前任务的status
+    pub fn get_currenttask_status(&self)->TaskStatus{
+        let inner = self.inner.exclusive_access();
+        //现在的任务id
+        let current=inner.current_task;
+        //返回现在的任务的状态
+        inner.tasks[current].task_status
+    }
+    #[allow(missing_docs)]
+    pub fn get_syscalltimes(&self) -> [u32;MAX_SYSCALL_NUM]{
+        let inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        return inner.tasks[current].syscall_times;
+    }
+    pub fn get_currenttask_time(&self) ->usize{
+        let inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        return inner.tasks[current].start_time;
+    }
 }
+//这个接口是为了获取当前的任务的状态
+#[allow(missing_docs)]
+pub fn get_current_task_status()-> TaskStatus{
+    TASK_MANAGER.get_currenttask_status()
+}
+#[allow(missing_docs)]
+pub  fn get_syscall_times()->[u32;MAX_SYSCALL_NUM]{
+    TASK_MANAGER.get_syscalltimes()
+}
+#[allow(missing_docs)]
+pub fn add_syscall_times(syscall_id:usize){
+    TASK_MANAGER.add_syscall_time(syscall_id);
+}
+#[allow(missing_docs)]
+pub fn get_current_task_start_time()->usize{
+    TASK_MANAGER.get_currenttask_time()
+}
+
 
 /// Run the first task in task list.
 pub fn run_first_task() {
