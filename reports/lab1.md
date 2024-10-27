@@ -1,0 +1,2 @@
+###
+思路很简单，我们只需要给TCB维护SYSCALL_TIMES和start_time即可，并且提供相应的接口，并且在每次syscall的时候，都调用addSyscallTimes的接口，这样我们就知道系统调用的次数了
