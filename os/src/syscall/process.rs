@@ -1,11 +1,12 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
+    config::MAX_SYSCALL_NUM, mm::{PageTableEntry, PhysAddr, VirtAddr}, task::{
         change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+    }, timer::get_time_us
 };
 
+// use page_table::PageTable;
+use mm::PageTable;
 #[repr(C)]
 #[derive(Debug)]
 pub struct TimeVal {
@@ -37,20 +38,47 @@ pub fn sys_yield() -> isize {
     suspend_current_and_run_next();
     0
 }
+//由虚拟地址查物理地址
+pub fn translated_physical_address(token: usize,ptr: *const u8) ->usize{
+    let page_table=PageTable::from_token(token);
+    let mut va=VirtAddr::from(ptr as usize);
+    let ppn=page_table.find_pte(va.floor()).unwrap().ppn();
+    PhysAddr::from(ppn).0+va.page_offset()
+}
+
+pub fn current_translated_physical_address(ptr: *const u8) -> usize {
+    let token=crate::task::current_user_token();
+    translated_physical_address(token,ptr)
+}
+
 
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!("kernel: sys_get_time");
-    -1
+    let us=get_time_us();
+    let ts=current_translated_physical_address(_ts as *const u8) as * mut TimeVal;
+    unsafe {
+        *ts=TimeVal{
+            sec: us/1_000_000,
+            usec: us%1_000_000,
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
+    let ti=current_translated_physical_address(_ti as *const u8) as *mut TaskInfo;
+    unsafe {
+        *ti=TaskInfo{
+            status:get_current_status(),
+            syscall_times:get_syscall_times(),
+            time:(get_time_us()-get_current_start_time())/1_000_000,
+        };
+    }
     -1
 }
 

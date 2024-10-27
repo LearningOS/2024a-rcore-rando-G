@@ -40,6 +40,7 @@ pub struct MemorySet {
 }
 
 impl MemorySet {
+
     /// Create a new empty `MemorySet`.
     pub fn new_bare() -> Self {
         Self {
@@ -261,6 +262,11 @@ impl MemorySet {
         } else {
             false
         }
+    }
+    pub fn mmap(&mut self,start : usize,len: usize) ->isize{
+        let vpnrange=VPNRange::new(VirtAddr::from(start).floor(), VirtAddr::from(start+len).ceil());
+
+
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
