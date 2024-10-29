@@ -6,8 +6,7 @@ use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next, TaskControlBlock, TaskStatus
     },
 };
 
@@ -167,11 +166,24 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+
+    let current_task=current_task();
+    let current_task=current_task.unwrap();
+    let mut inner_current=current_task.inner_exclusive_access();
+
+    let token=inner_current.get_user_token();
+    let path=translated_str(token, _path);
+    if let Some(data)=get_app_data_by_name(path.as_str()){
+        let TCB=Arc::new(TaskControlBlock::new(data));
+        let mut tcb_inner=TCB.inner_exclusive_access();
+        tcb_inner.parent=Some(Arc::downgrade(&current_task));
+        inner_current.children.push(TCB.clone());
+        add_task(TCB.clone());
+        return TCB.pid.0 as isize;
+    }
+
     -1
+
 }
 
 // YOUR JOB: Set task priority.
