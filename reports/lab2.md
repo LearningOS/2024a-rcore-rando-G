@@ -1,0 +1,2 @@
+###
+位memoryset维护一个mmap和munmap即可，在每次程序运行的时候动态调用mmap和munmap
