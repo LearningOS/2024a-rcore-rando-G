@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::{File, StatMode};
+use super::{File, Stat, StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -28,7 +28,6 @@ pub struct OSInodeInner {
     inode: Arc<Inode>,
 }
 
-/// OSInode
 impl OSInode {
     /// create a new inode in memory
     pub fn new(readable: bool, writable: bool, inode: Arc<Inode>) -> Self {
@@ -69,16 +68,6 @@ pub fn list_apps() {
         println!("{}", app);
     }
     println!("**************/");
-}
-
-/// linkat
-pub fn linkat(_old_name: &str, _new_name: &str) -> isize {
-    ROOT_INODE.add_link(_old_name, _new_name)
-}
-
-/// unlinkat
-pub fn unlinkat(_name: &str) -> isize {
-    ROOT_INODE.remove_link(_name)
 }
 
 bitflags! {
@@ -135,6 +124,16 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+/// Link a file
+pub fn link_file(old_name: &str, new_name: &str) -> bool {
+    ROOT_INODE.link_file(old_name, new_name)
+}
+
+/// Unlink a file
+pub fn unlink_file(name: &str) -> bool {
+    ROOT_INODE.unlink(name)
+}
+
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
@@ -167,17 +166,21 @@ impl File for OSInode {
         total_write_size
     }
 
-    fn fstat(&self, stat: &mut super::Stat) -> isize {
-        stat.dev = 0;
-        let inner_inode = &self.inner.exclusive_access().inode;
-        match inner_inode.fstat_statmode() {
-            1 => stat.mode = StatMode::FILE,
-            2 => stat.mode = StatMode::DIR,
-            _ => stat.mode = StatMode::NULL,
-        };
-        stat.ino = inner_inode.fstat_inode_id();
-
-        stat.nlink = inner_inode.fstat_nlink();
-        0
+    fn stat(&self) -> Stat {
+        let inner = self.inner.exclusive_access();
+        inner.inode.read_disk_inode(|disk_inode| {
+            let mode = if disk_inode.is_dir() {
+                StatMode::DIR
+            } else {
+                StatMode::FILE
+            };
+            Stat {
+                dev: 0,
+                ino: 0,
+                mode: mode,
+                nlink: disk_inode.nlink,
+                pad: Default::default(),
+            }
+        })
     }
 }
